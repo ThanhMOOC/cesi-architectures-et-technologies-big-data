@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="kafka" />
+      </profile>
+      <profile name="Annotation profile for spark-offensive-detector" enabled="true">
+        <sourceOutputDir name="../data/spark-apps/generated-sources/annotations" />
+        <sourceTestOutputDir name="../data/spark-apps/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="cesi-big-data-streaming" />
+      </profile>
+      <profile name="Annotation profile for cesi-big-data" enabled="true">
+        <sourceOutputDir name="../../data/spark-apps/generated-sources/annotations" />
+        <sourceTestOutputDir name="../../data/spark-apps/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="spark" />
+      </profile>
+    </annotationProcessing>
+  </component>
+</project>
