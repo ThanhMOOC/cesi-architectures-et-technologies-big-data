@@ -1,0 +1,204 @@
+services:
+  spark-master:
+    image: registry.gitlab.com/cesi3131244/cesi-traitement-distribue-de-donnees/bitnamilegacy/spark:4.0.0-debian-12-r20
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+      - SPARK_HOME=/opt/bitnami/spark
+      - HOME=/opt/bitnami/spark
+      - HADOOP_USER_NAME=sparkuser
+      - SPARK_USER=sparkuser
+    ports:
+      - "8080:8080"  # Spark Master UI
+      - "7077:7077"  # Spark Master port
+    volumes:
+      - ./data/spark-apps:/opt/spark-apps  # accès aux JAR générés
+      - ./data/spark-data:/opt/spark-data
+      - ./data/spark-events:/opt/spark-events
+
+  spark-worker-1:
+    image: registry.gitlab.com/cesi3131244/cesi-traitement-distribue-de-donnees/bitnamilegacy/spark:4.0.0-debian-12-r20
+    container_name: spark-worker-1
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HOME=/opt/bitnami/spark
+      - HOME=/opt/bitnami/spark
+      - HADOOP_USER_NAME=sparkuser
+      - SPARK_USER=sparkuser
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./data/spark-apps:/opt/spark-apps
+      - ./data/spark-data:/opt/spark-data
+      - ./data/spark-events:/opt/spark-events
+
+  spark-worker-2:
+    image: registry.gitlab.com/cesi3131244/cesi-traitement-distribue-de-donnees/bitnamilegacy/spark:4.0.0-debian-12-r20
+    container_name: spark-worker-2
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HOME=/opt/bitnami/spark
+      - HOME=/opt/bitnami/spark
+      - HADOOP_USER_NAME=sparkuser
+      - SPARK_USER=sparkuser
+    volumes:
+      - ./data/spark-apps:/opt/spark-apps
+      - ./data/spark-data:/opt/spark-data
+      - ./data/spark-events:/opt/spark-events
+
+  # Sers d'instance d'entrée, utiliser :
+  # docker exec -it spark-submit bash
+  # pour obtenir un shell interactif de ce conteneur
+  spark-submit:
+    # On run en root pour pouvoir créer un user sparkdata et que spark puisse lire des fichiers sur le disque
+    user: root
+    image: registry.gitlab.com/cesi3131244/cesi-traitement-distribue-de-donnees/bitnamilegacy/spark:4.0.0-debian-12-r20
+    container_name: spark-submit
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=client
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_HOME=/opt/bitnami/spark
+      - HOME=/opt/bitnami/spark
+      - HADOOP_USER_NAME=sparkuser
+      - SPARK_USER=sparkuser
+      # - HADOOP_USER_NAME=root
+    volumes:
+      - ./data/spark-apps:/opt/spark-apps
+      - ./data/spark-data:/opt/spark-data
+      - ./data/spark-events:/opt/spark-events
+    # On garde tail -f pour que le conteneur reste vivant
+    entrypoint: ["tail", "-f", "/dev/null"]
+    # (facultatif) pour exécuter un job directement :
+    # entrypoint: ["spark-submit", "--master", "spark://spark-master:7077", "--class", "com.example.YourMainClass", "/opt/spark-apps/spark-offensive-detector-1.0.jar"]
+
+  # Serveur d'UI pour analyse des jobs
+  spark-history:
+    image: registry.gitlab.com/cesi3131244/cesi-traitement-distribue-de-donnees/bitnamilegacy/spark:4.0.0-debian-12-r20
+    container_name: spark-history
+    depends_on:
+      - spark-master
+    ports:
+      - "18080:18080"     # Spark History Server UI
+    environment:
+      - SPARK_HOME=/opt/bitnami/spark
+      # Où l’History Server lit les logs d’événements
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=file:/opt/spark-events -Dspark.history.ui.port=18080
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - ./data/spark-events:/opt/spark-events
+    command: >
+      bash -lc "/opt/bitnami/spark/sbin/start-history-server.sh &&
+                tail -f /opt/bitnami/spark/logs/spark--org.apache.spark.deploy.history.HistoryServer-*.out"
+
+
+  # ---------------- ZOOKEEPER & KAFKA ----------------
+  zookeeper-cesi:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper-cesi
+    container_name: zookeeper-cesi
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka-cesi:
+    image: confluentinc/cp-kafka:7.6.0
+    hostname: kafka-cesi
+    container_name: kafka-cesi
+    depends_on:
+      - zookeeper-cesi
+    ports:
+      - "9092:9092"
+      - "29092:29092" # Pour usage interne (Docker)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper-cesi:2181
+      # 🔹 On définit un seul listener accessible à tous (intérieur et extérieur)
+      # KAFKA_LISTENERS: PLAINTEXT://:9092
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-cesi:9092
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_INTERNAL://0.0.0.0:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka-cesi:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+  kafka-ui-cesi:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui-cesi
+    ports:
+      - "8085:8080"
+    depends_on:
+      - kafka-cesi
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS: kafka-cesi:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper-cesi:2181
+
+
+# ------------------------------------- ELK ---------------------------------------
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    container_name: elasticsearch
+    environment:
+    - discovery.type=single-node
+    - xpack.security.enabled=false
+    - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+    - "9200:9200"
+    volumes:
+    - ./data/elasticsearch:/usr/share/elasticsearch/data
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.12.2
+    container_name: kibana
+    depends_on:
+    - elasticsearch
+    ports:
+    - "5601:5601"
+    environment:
+    - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect:7.6.0
+    container_name: kafka-connect
+    depends_on:
+    - kafka-cesi
+    - elasticsearch
+    ports:
+    - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka-cesi:29092
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: connect-cluster
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components
+
+    command: >
+      bash -c "
+        confluent-hub install --no-prompt confluentinc/kafka-connect-elasticsearch:15.1.1 &&
+        /etc/confluent/docker/run
+      "

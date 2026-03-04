@@ -18,7 +18,7 @@ import static org.apache.spark.sql.functions.*;
  * => /opt/spark-apps dans le conteneur
  * Si le module distribué ne démarre pas => rm -rf /tmp/checkpoints
  * Si il ne lis rien c'est aprce qu'on est pas en mode earliest (pb avec Docker bind mount).
- * Si le ./start.sh indique fichier non trouvé c'est parce que c'est au format windows => sed -i 's/\r$//' start.sh
+ * Si le ./start2.sh indique fichier non trouvé c'est parce que c'est au format windows => sed -i 's/\r$//' start2.sh
  */
 public class OffensiveDetector {
 

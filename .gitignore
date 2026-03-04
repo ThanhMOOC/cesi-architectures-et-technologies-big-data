@@ -5,3 +5,9 @@ data/elasticsearch/**
 cesi-big-data/kafka/target/**
 data/spark-events/**
 Architectures et technologies Big Data.pptx
+
+cesi-big-data/kafka/target/
+
+data/spark-apps/
+
+INF116 - Architecture et technologies Big Data.pdf
