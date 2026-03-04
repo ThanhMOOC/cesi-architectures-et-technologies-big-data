@@ -30,42 +30,17 @@ public class TwitchViewersAnalytics {
                 .option("failOnDataLoss", "false")
                 .load();
 
-        // Tous les champs sont des strings car le producteur utilise Map<String, String>
-        StructType schema = new StructType()
-                .add("userId", "string")
-                .add("channel", "string")
-                .add("viewerCount", "string")
-                .add("language", "string")
-                .add("date", "timestamp");
+        /* Here you can write the aggregation pipeline logic */
 
-        // key et value sont en binaire -> cast en STRING
-        Dataset<Row> lines = kafkaDS.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-        // Parsing du json
-        .select(
-                functions.col("key"),
-                functions.from_json(functions.col("value"), schema).alias("json")
-        )
-        // Flatten the json + cast viewerCount string -> integer
-        .select(
-                functions.col("key"),
-                functions.col("json.channel").alias("channel"),
-                functions.col("json.viewerCount").cast("integer").alias("viewerCount"),
-                functions.col("json.date").alias("event_time")
-        )
-        .withWatermark("event_time", "1 minute")
-        // Agrégation par fenêtre d'1 minute et par chaîne
-        .groupBy(functions.window(functions.col("event_time"), "1 minute"), functions.col("channel"))
-        .agg(functions.max("viewerCount").as("max_viewers"));
-
-        lines
-                .selectExpr("CAST(channel AS STRING) AS key", "to_json(struct(*)) AS value")
-                .writeStream()
-                .outputMode("update")
-                .format("kafka")
-                .option("kafka.bootstrap.servers", "kafka-cesi:29092")
-                .option("topic", "aggregated-viewers")
-                .option("checkpointLocation", "/tmp/checkpoints/twitch_viewers_analytics")
-                .start()
-                .awaitTermination();
+//        lines
+//                .selectExpr("CAST(channel AS STRING) AS key", "to_json(struct(*)) AS value")
+//                .writeStream()
+//                .outputMode("update")
+//                .format("kafka")
+//                .option("kafka.bootstrap.servers", "kafka-cesi:29092")
+//                .option("topic", "aggregated-viewers")
+//                .option("checkpointLocation", "/tmp/checkpoints/twitch_viewers_analytics")
+//                .start()
+//                .awaitTermination();
     }
 }

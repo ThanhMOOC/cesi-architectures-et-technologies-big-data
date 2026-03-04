@@ -24,58 +24,14 @@ public class TwitchViewerTracker {
 
     public static void main(String[] args) throws InterruptedException {
 
+        /* ****** init kafka producer ****** */
+
         KafkaUtils.initKafka(TOPIC);
 
-        try (TwitchClient twitchClient = TwitchClientBuilder.builder()
-                .withEnableHelix(true)
-                .withClientId(CLIENT_ID)
-                .withClientSecret(CLIENT_SECRET)
-                .build()) {
+        /* ****** Twitch part ****** */
 
-            // 1️⃣ Récupération initiale des TOP_N_STREAMS streams et stockage de leurs IDs
-            List<Stream> topStreams = twitchClient.getHelix()
-                    .getStreams(null, null, null, TOP_N_STREAMS, null, null, null, null)
-                    .execute()
-                    .getStreams();
+        // Doc of API can be found here :
+        // https://twitch4j.github.io/rest-helix/
 
-            List<String> trackedUserIds = topStreams.stream()
-                    .map(Stream::getUserId)
-                    .toList();
-
-            log.info("Tracking {} streams : {}", trackedUserIds.size(),
-                    topStreams.stream().map(Stream::getUserLogin).toList());
-
-            // 2️⃣ Polling toutes les minutes
-            ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-
-            scheduler.scheduleAtFixedRate(() -> {
-                try {
-                    List<Stream> currentStreams = twitchClient.getHelix()
-                            .getStreams(null, null, null, TOP_N_STREAMS, null, null, trackedUserIds, null)
-                            .execute()
-                            .getStreams();
-
-                    String timestamp = ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT);
-
-                    for (Stream stream : currentStreams) {
-                        Map<String, String> payload = Map.of(
-                                "userId",      stream.getUserId(),
-                                "channel",     stream.getUserLogin(),
-                                "viewerCount", String.valueOf(stream.getViewerCount()),
-                                "language",    stream.getLanguage(),
-                                "date",        timestamp
-                        );
-                        KafkaUtils.offer(stream.getUserId(), payload);
-                        log.info("viewers channel={} count={}", stream.getUserLogin(), stream.getViewerCount());
-                    }
-
-                } catch (Exception e) {
-                    log.error("Erreur lors du polling Helix", e);
-                }
-            }, 0, 1, TimeUnit.MINUTES);
-
-            // Maintien du thread principal en vie
-            Thread.currentThread().join();
-        }
     }
 }

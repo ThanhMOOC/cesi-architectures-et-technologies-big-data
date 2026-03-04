@@ -34,65 +34,8 @@ public class TwitchMessageTracker {
 
         /* ****** Twitch part ****** */
 
-        try (TwitchClient twitchClient = TwitchClientBuilder.builder()
-                .withEnableHelix(true)
-                .withEnableChat(true)
-                .withClientId(CLIENT_ID)
-                .withClientSecret(CLIENT_SECRET)
-                .build()) {
-
-            // 1️⃣ Récupération des N plus gros streams
-            List<Stream> topStreams = twitchClient.getHelix()
-                    .getStreams(null, null, null, TOP_N_STREAMS, null, null, null, null)
-                    .execute()
-                    .getStreams();
-
-            System.out.println(""+topStreams.stream().map(s -> s.getUserLogin()).toList());
-
-            System.out.println("🎥 Top " + TOP_N_STREAMS + " streams Twitch :");
-
-            for (Stream stream : topStreams) {
-                String channelName = stream.getUserLogin();
-
-                System.out.printf(
-                        "- %s (%d viewers)%n",
-                        channelName,
-                        stream.getViewerCount()
-                );
-
-                streams.put(channelName, stream);
-
-                // 2️⃣ Connexion au chat
-                System.out.printf("Joining %s ...", channelName);
-                twitchClient.getChat().joinChannel(channelName);
-            }
-
-            // 3️⃣ Écoute des messages
-            twitchClient.getEventManager().onEvent(ChannelMessageEvent.class, event -> {
-                Stream stream = streams.get(event.getChannel().getName());
-
-                stream.getLanguage();
-                stream.getType();
-
-//                System.out.printf(
-//                        "[%s] %s : %s lang %s type %s%n",
-//                        event.getChannel().getName(),
-//                        event.getUser().getName(),
-//                        event.getMessage(),
-//                        stream.getLanguage(),
-//                        stream.getType()
-//                );
-                /* send it to kafka */
-                sendMessage(event);
-            });
-
-            System.out.println("✅ Connexion aux chats réussie !");
-
-            Thread.currentThread().join();
-
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        };
+        // Doc of API can be found here :
+        // https://twitch4j.github.io/rest-helix/
 
 
     }

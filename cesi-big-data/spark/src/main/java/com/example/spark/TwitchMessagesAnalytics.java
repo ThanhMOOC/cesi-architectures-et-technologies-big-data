@@ -32,44 +32,18 @@ public class TwitchMessagesAnalytics {
                 .option("failOnDataLoss", "false")
                 .load();
 
-        StructType schema = new StructType()
-                .add("channel", "string")
-                .add("user", "string")
-                .add("message", "string")
-                .add("lang", "string")
-                .add("date", "timestamp");
+        /* Here you can write the aggregation pipeline logic */
 
-        // key et value sont en binaire -> cast en STRING
-        Dataset<Row> lines = kafkaDS.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-        // Parsing du json
-        .select(
-                functions.col("key"),
-                functions.from_json(functions.col("value"), schema).alias("json")
-        )
-        // Flatten the json
-        .select(
-                functions.col("key"),
-                functions.col("json.channel").alias("channel"),
-                functions.col("json.user").alias("user"),
-                functions.col("json.date").alias("event_time")
-        )
-        .withWatermark("event_time", "1 minute")
-        // Grouping par minute
-        .groupBy(functions.window(functions.col("event_time"), "1 minute"), functions.col("user"), functions.col("channel"))
-        .count();
-
-        lines
-                .selectExpr("CAST(channel AS STRING) AS key", "to_json(struct(*)) AS value")
-                .writeStream()
-                .outputMode("update")
-//                .outputMode("append")
-                .format("kafka")
-//                .format("console")
-                .option("kafka.bootstrap.servers", "kafka-cesi:29092")
-                .option("topic", "aggregated-messages")
-                .option("checkpointLocation", "/tmp/checkpoints/offensive_detector")
-                .start()
-                .awaitTermination();
+//        lines
+//                .selectExpr("CAST(channel AS STRING) AS key", "to_json(struct(*)) AS value")
+//                .writeStream()
+//                .outputMode("update")
+//                .format("kafka")
+//                .option("kafka.bootstrap.servers", "kafka-cesi:29092")
+//                .option("topic", "aggregated-messages")
+//                .option("checkpointLocation", "/tmp/checkpoints/offensive_detector")
+//                .start()
+//                .awaitTermination();
 
     }
 
