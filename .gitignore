@@ -1,0 +1,7 @@
+application.properties
+kata-architecture-twitch-correction.md
+cesi-big-data/kafka/src/main/resources/application.properties
+data/elasticsearch/**
+cesi-big-data/kafka/target/**
+data/spark-events/**
+Architectures et technologies Big Data.pptx
