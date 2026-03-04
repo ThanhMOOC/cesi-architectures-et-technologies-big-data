@@ -26,7 +26,7 @@ Pipeline de traitement de données Big Data construit sur **Apache Kafka** et **
 Twitch API ──► TwitchMessageTracker ──► [twitch-messages]  ──► TwitchMessagesAnalytics ──► [aggregated-messages]  ──┐
            └─► TwitchViewerTracker  ──► [twitch-viewers]   ──► TwitchViewersAnalytics  ──► [aggregated-viewers]   ──┤
                                                                                                                      │
-posts.json ──► RandomPostProducer   ──► [offensive-posts]  ──► OffensiveDetectorStream  ──► [offensive-posts-output] ──┤
+                                            
                                                                                                                      │
                                                                                Kafka Connect ──► Elasticsearch ──► Kibana
 ```
@@ -55,23 +55,19 @@ posts.json ──► RandomPostProducer   ──► [offensive-posts]  ──►
 │   │       │   ├── JsonSerializer.java        # Sérialiseur Jackson personnalisé
 │   │       │   ├── PropertiesUtils.java       # Chargeur de application.properties
 │   │       │   ├── RandomPostProducer.java    # Rejoue posts.json vers offensive-posts
-│   │       │   ├── TwitchTracker.java         # Version avec credentials en dur
 │   │       │   ├── TwitchMessageTracker.java  # Version avec credentials depuis properties
 │   │       │   └── TwitchViewerTracker.java   # Sondage du nombre de spectateurs
 │   │       └── resources/
 │   │           ├── application.properties     # Credentials Twitch API
-│   │           └── posts.json                 # Données de posts simulés
 │   └── spark/                            ← Module jobs Spark (fat JAR via maven-shade)
 │       └── src/main/
 │           ├── java/com/example/spark/
 │           │   ├── OffensiveDetector.java          # Job batch : détection offline
 │           │   ├── OffensiveDetectorStream.java    # Job streaming : détection temps réel
-│           │   ├── TwitchAnalytics.java            # Job streaming : comptage messages
 │           │   ├── TwitchMessagesAnalytics.java    # Variante de TwitchAnalytics
 │           │   └── TwitchViewersAnalytics.java     # Job streaming : max spectateurs
 │           └── resources/
 │               ├── offensive_words.txt             # Liste de 200+ mots offensants
-│               ├── start.sh                        # Script spark-submit (batch)
 │               └── start2.sh                       # Script spark-submit (streaming, arg)
 ├── data/
 │   ├── spark-apps/                       ← JARs compilés + scripts (montés dans les conteneurs)
@@ -212,10 +208,6 @@ docker exec -it spark-submit bash
 bash /opt/spark-apps/start2.sh OffensiveDetectorStream
 bash /opt/spark-apps/start2.sh TwitchMessagesAnalytics
 bash /opt/spark-apps/start2.sh TwitchViewersAnalytics
-
-# Lancer le job batch
-bash /opt/spark-apps/start.sh
-```
 
 > **Problème de fins de ligne Windows** : si `start.sh` répond "file not found", convertir en format Unix :
 > ```bash
