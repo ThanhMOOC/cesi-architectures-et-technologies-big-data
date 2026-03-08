@@ -4,11 +4,7 @@ import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.functions;
-import org.apache.spark.sql.streaming.StreamingQuery;
 import org.apache.spark.sql.types.StructType;
-
-import static org.apache.spark.sql.functions.*;
-import static org.apache.spark.sql.functions.col;
 
 public class OffensiveDetectorStream {
 
@@ -24,65 +20,79 @@ public class OffensiveDetectorStream {
                 .master("spark://spark-master:7077")
                 .getOrCreate();
 
+        // 2️⃣ ĐỌC DỮ LIỆU TỪ TOPIC TWITCH THẬT
         Dataset<Row> kafkaDS = spark.readStream()
                 .format("kafka")
                 .option("kafka.bootstrap.servers", "kafka-cesi:29092")
-                /* we'll do this manual assignment to avoid windows/docker permissions issues */
-//                .option("assign", "{\"offensive-posts\":[0]}")
-                .option("subscribe", "offensive-posts")
+                .option("subscribe", "twitch-messages") // Đổi sang nghe twitch-messages
                 .option("startingOffsets", "earliest")
                 .option("failOnDataLoss", "false")
                 .load();
 
+        // 3️⃣ Schema chuẩn của Twitch Chat
         StructType schema = new StructType()
-                .add("platform", "string")
-                .add("id", "string")
-                .add("message", "string");
+                .add("channel", "string")
+                .add("user", "string")
+                .add("message", "string")
+                .add("lang", "string")
+                .add("date", "string");
 
-        // key et value sont en binaire -> cast en STRING
-        Dataset<Row> lines = kafkaDS.selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)")
-                // Parsing du json
-                .select(
-                        functions.col("key"),
-                        functions.from_json(functions.col("value"), schema).alias("json")
-                );
+        Dataset<Row> lines = kafkaDS
+                .selectExpr("CAST(value AS STRING) AS raw_json")
+                .select(functions.from_json(functions.col("raw_json"), schema).alias("json"))
+                .select("json.*")
+                .withColumn("channel", functions.lower(functions.trim(functions.col("channel"))))
+                .withColumn("message", functions.lower(functions.trim(functions.col("message"))))
+                .withColumn("event_time", functions.to_timestamp(functions.col("date")))
+                // Lọc bỏ các dòng lỗi null
+                .filter(functions.col("channel").isNotNull().and(functions.length(functions.col("channel")).gt(0)))
+                .filter(functions.col("message").isNotNull().and(functions.length(functions.col("message")).gt(0)))
+                .filter(functions.col("event_time").isNotNull());
 
+        // 4️⃣ Đọc danh sách từ cấm
         Dataset<Row> offensiveWords = spark
                 .read()
                 .text("/opt/spark-data/offensive_words.txt")
-                .select(concat(lit(" "), col("value"), lit(" ")).as("word"));
+                .select(functions.lower(functions.trim(functions.col("value"))).alias("word"));
 
-        Dataset<Row> dataset = lines
+        // 5️⃣ Tìm các tin nhắn Twitch chứa từ cấm
+        Dataset<Row> offensiveMessages = lines
                 .crossJoin(offensiveWords)
+                // Ép message về chữ thường để so sánh không phân biệt hoa/thường
+                .filter(functions.col("message").contains(functions.col("word")))
                 .select(
-                        col("json.id"),
-                        col("json.platform"),
-                        col("json.message"),
-                        col("json.message").contains(col("word")).as("contains_offensive"),
-                        col("word").as("offensive_word")
+                        functions.col("channel"),
+                        functions.col("user"),
+                        functions.col("message"),
+                        functions.col("event_time")
                 )
-                .filter(col("contains_offensive").isNotNull().and(col("contains_offensive").equalTo(true)))
-                .groupBy(
-                        col("id"),
-                        col("platform"),
-                        col("message")
-                )
-                .agg(collect_list(col("offensive_word")).as("offensive_words"));
+                // Đảm bảo 1 tin nhắn chỉ bị đếm 1 lần dù chứa nhiều từ cấm
+                .dropDuplicates("channel", "user", "message", "event_time");
 
+        // 6️⃣ KPI: Đếm số lượng tin nhắn vi phạm theo khung thời gian 1 phút cho TỪNG KÊNH
+        Dataset<Row> dataset = offensiveMessages
+                .withWatermark("event_time", "1 minute")
+                .groupBy(
+                        functions.window(functions.col("event_time"), "1 minute"),
+                        functions.col("channel")
+                )
+                .agg(functions.count(functions.lit(1)).alias("offensive_count"));
+
+        // 7️⃣ Đẩy kết quả KPI ra Kafka topic mới
         dataset
-                .selectExpr("CAST(id AS STRING) AS key", "to_json(struct(*)) AS value")
+                .selectExpr(
+                        "CAST(concat(channel, '|', CAST(window.start AS STRING)) AS STRING) AS key",
+                        "to_json(named_struct('window_start', CAST(window.start AS STRING), 'window_end', CAST(window.end AS STRING), 'channel', channel, 'offensive_count', offensive_count)) AS value"
+                )
                 .writeStream()
                 .outputMode("update")
-//                .format("console")
                 .format("kafka")
                 .option("kafka.bootstrap.servers", "kafka-cesi:29092")
-                .option("topic", "offensive-posts-output")
-                .option("failOnDataLoss", false)
-                .option("checkpointLocation", "/tmp/checkpoints/offensive_detector")
+                .option("topic", "aggregated-offensive-messages") // Đẩy ra topic mới
+                .option("failOnDataLoss", "false")
+                // Checkpoint tách biệt để không đụng độ các job khác
+                .option("checkpointLocation", "/tmp/checkpoints/twitch_offensive_detector") 
                 .start()
                 .awaitTermination();
-
-
     }
-
 }

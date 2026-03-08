@@ -209,6 +209,11 @@ bash /opt/spark-apps/start2.sh OffensiveDetectorStream
 bash /opt/spark-apps/start2.sh TwitchMessagesAnalytics
 bash /opt/spark-apps/start2.sh TwitchViewersAnalytics
 
+# OU lancer les classes en arrière-plan
+docker exec -d spark-submit bash /opt/spark-apps/start2.sh OffensiveDetectorStream
+docker exec -d spark-submit bash /opt/spark-apps/start2.sh TwitchMessagesAnalytics
+docker exec -d spark-submit bash /opt/spark-apps/start2.sh TwitchViewersAnalytics
+
 > **Problème de fins de ligne Windows** : si `start.sh` répond "file not found", convertir en format Unix :
 > ```bash
 > sed -i 's/\r$//' /opt/spark-apps/start.sh /opt/spark-apps/start2.sh
@@ -229,15 +234,21 @@ bash /opt/spark-apps/start2.sh TwitchViewersAnalytics
 
 # Simuler des posts offensants (rejoue posts.json)
 java -cp target/kafka-1.0.0.jar com.example.kafka.RandomPostProducer
+# ou avec mvn
+mvn exec:java -Dexec.mainClass="com.example.kafka.RandomPostProducer"
 
 # Collecter les messages chat Twitch (credentials en dur)
 java -cp target/kafka-1.0.0.jar com.example.kafka.TwitchTracker
 
 # Collecter les messages chat Twitch (credentials depuis application.properties)
 java -cp target/kafka-1.0.0.jar com.example.kafka.TwitchMessageTracker
+# ou avec mvn
+mvn exec:java -Dexec.mainClass="com.example.kafka.TwitchMessageTracker"
 
 # Collecter les compteurs de spectateurs Twitch
 java -cp target/kafka-1.0.0.jar com.example.kafka.TwitchViewerTracker
+# ou avec mvn
+mvn exec:java -Dexec.mainClass="com.example.kafka.TwitchViewerTracker"
 ```
 
 Les producteurs locaux utilisent `localhost:9092` (listener externe de Kafka).
@@ -326,12 +337,29 @@ curl -X POST http://localhost:8083/connectors \
 curl -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
   -d @create_sink_viewers.json
+
+# Utilisateur unique par session
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @create_sink_unique_users.json
+
+# Spectateurs max par session
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @create_sink_max_viewers.json
+
+# Messages offensants par canal (Brand Safety)
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @create_sink_offensive.json
 ```
 
 Ou sur Windows (PowerShell) :
 ```powershell
 Invoke-RestMethod -Method Post -Uri "http://localhost:8083/connectors" -ContentType "application/json" -InFile "create_sink.json"
 Invoke-RestMethod -Method Post -Uri "http://localhost:8083/connectors" -ContentType "application/json" -InFile "create_sink_viewers.json"
+Invoke-RestMethod -Method Post -Uri "http://localhost:8083/connectors" -ContentType "application/json" -InFile "create_sink_unique_users.json"
+Invoke-RestMethod -Method Post -Uri "http://localhost:8083/connectors" -ContentType "application/json" -InFile "create_sink_max_viewers.json"
 ```
 
 - `create_sink.json` : indexe `aggregated-messages` dans Elasticsearch (`es-sink-connector`)

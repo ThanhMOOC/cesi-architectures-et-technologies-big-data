@@ -1,0 +1,16 @@
+{
+    "name": "es-sink-connector-unique-users",
+    "config": {
+        "connector.class": "io.confluent.connect.elasticsearch.ElasticsearchSinkConnector",
+        "tasks.max": "1",
+        "topics": "kpi-unique-users-session",
+        "connection.url": "http://elasticsearch:9200",
+        "key.ignore": "true",
+        "schema.ignore": "true",
+        "type.name": "_doc",
+        "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+        "value.converter.schemas.enable": "false",
+        "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+        "key.converter.schemas.enable": "false"
+    }
+}
