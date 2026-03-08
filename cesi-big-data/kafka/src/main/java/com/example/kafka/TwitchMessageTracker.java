@@ -14,6 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 public class TwitchMessageTracker {
 
@@ -37,6 +38,31 @@ public class TwitchMessageTracker {
         // Doc of API can be found here :
         // https://twitch4j.github.io/rest-helix/
 
+        // 1️⃣ Khởi tạo TwitchClient với credentials
+        TwitchClient twitchClient = TwitchClientBuilder.builder()
+                .withClientId(CLIENT_ID)
+                .withClientSecret(CLIENT_SECRET)
+                .withEnableHelix(true)
+                .withEnableChat(true)
+                .build();
+
+        // 2️⃣ Lấy TOP_N_STREAMS stream đang live nhiều viewer nhất
+        List<Stream> topStreams = twitchClient.getHelix()
+                .getStreams(null, null, null, TOP_N_STREAMS, null, null, null, null)
+                .execute()
+                .getStreams();
+
+        // 3️⃣ Lưu thông tin stream và join vào chat từng kênh
+        for (Stream stream : topStreams) {
+            streams.put(stream.getUserName().toLowerCase(Locale.ROOT), stream);
+            twitchClient.getChat().joinChannel(stream.getUserName());
+            log.info("Joined channel: {}", stream.getUserName());
+        }
+
+        // 4️⃣ Lắng nghe tin nhắn chat → gửi vào Kafka
+        twitchClient.getEventManager().onEvent(ChannelMessageEvent.class, event -> {
+            sendMessage(event);
+        });
 
     }
 
@@ -48,11 +74,16 @@ public class TwitchMessageTracker {
      */
     public static void sendMessage(ChannelMessageEvent message) {
 
+        String channelName = message.getChannel().getName();
+        Stream stream = streams.get(channelName.toLowerCase(Locale.ROOT));
+        String language = stream != null && stream.getLanguage() != null ? stream.getLanguage() : "unknown";
+        String userName = message.getUser() != null ? message.getUser().getName() : "unknown";
+
         Map<String, String> formattedMessage = Map.of(
-                "channel", message.getChannel().getName(),
-                "user", message.getUser().getName(),
+            "channel", channelName,
+            "user", userName,
                 "message", message.getMessage(),
-                "lang", streams.get(message.getChannel().getName()).getLanguage(),
+            "lang", language,
                 "date", ZonedDateTime.now().format(DateTimeFormatter.ISO_INSTANT)
         );
 
